@@ -1,9 +1,13 @@
-##docker installation
+# 01 Getting Started
+
+## docker installation
 
 install docker desktop
 hyperV - Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
 container - Enable-WindowsOptionalFeature -Online -FeatureName containers –All
 powershell as administrator: wsl.exe --update
+
+# 02 Docker Images & Containers: Fundamentals
 
 ## build a docker file
 
@@ -176,7 +180,7 @@ docker push <imagename>
 docker pull <imagename>
 ```
 
-# Section 3 - Managing data & working volumes
+# 03 - Managing data & working volumes
 - specify link to volume: VOLUME ["/app/feedback"]
 
 - volumes are folders on host machine harddrive mounted into containers
@@ -293,4 +297,78 @@ eg. to change port number
 - instructions add layers so push it lower down in Dockerfile so less subsequent layers are executed
 ```
 docker build -t feedback-node:dev --build-arg DEFAULT_PORT=8000
+```
+
+# 04 Networking - Cross Container Communication
+- connecting container to localhost machine
+- reaching out to www
+- container to container connection
+
+### container to WWW
+getting mongo to work in Dockerfile
+- works out of the box to connect to web
+
+### container to local mongoDb
+replace localhost with 'host.docker.internal' translates to ip address of host machine as seen from inside container
+
+```js
+mongoose.connet(
+  'mongodb://host.docker.internal:27017/swfavorites',
+)
+
+```
+
+### container to container communication
+
+#### MANUAL CONFIG
+- make a mongodb container
+- dockerhub -search mongodb image
+- connecting to another container with mongodb running inside, we inspect that container and get the url
+- using 'docker container inspect mongodb' can get 'IPAddress' under 'network settings':  "IPAddress": "172.17.0.3",
+- so back on the app.js we change out the domain 
+
+```
+docker run mongo
+docker run -d --name mongodb mongo
+
+<!-- get info about container -->
+docker container inspect mongodb
+```
+
+```js
+// app.js
+mongoose.connect(
+  'mongodb://172.17.0.3:27017/swfavorites',
+  
+```
+
+```shell
+docker run --name favorites -d --rm -p 3000:3000 favorites-node
+```
+
+#### CONTAINER NETWORKS "NETWORKS" - MORE STREAMLINED METHOD CONTAINER TO CONTAINER COMMUNICATION
+- add containers to same "network" 'docker run --network <name>'
+- and docker automatically links up containers and ip lookup
+- isolated containers created able to talk to each other
+- unlike volumes, docker will not automatically create networks for you
+- 'docker network create <name>'
+- then in the code, instead of using a hardcoded domain like localhost, you put the name of the container you want to connect to
+
+```
+docker network create favorites-net
+docker run -d --name mongodb --network favorites-net mongo
+```
+
+```js
+// app.js - connecting to mongodb container
+mongoose.connect('mongodb://mongodb:21017/swfavorites')
+```
+
+### rebuild nodejs side after code change
+
+```
+docker build -t favorites-node .
+
+<!-- run node application again -->
+docker run --name favorites --network favorites-net -d --rm -p 3000:3000 favorites-node
 ```
