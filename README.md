@@ -578,3 +578,78 @@ docker build -t goals-react .
 ```shell
 docker run -v C:\Users\clark\Downloads\code\tutorial-maximilianschwarzmuller\tutorial-maximilianschwarzmuller-docker\05-multicontainer-app-01-starting-setup\frontend:/app/src --name goals-frontend --rm -d -p 3000:3000 -it goals-react
 ```
+
+---------------------------------------------------
+
+# 6 Docker compose
+
+- create a docker-compose.yaml file
+- version is the version of docker compose you specify (which limits features you can use)
+- https://docs.docker.com/compose/compose-file/
+- indentaion and letter case matters in yaml
+- services: lists containers and futher indentations list configuration for each container
+- specify environment variables like: 
+    MONGO_INITDB_ROOT_USERNAME:max OR - MONGO_INITDB_ROOT_USERNAME=max
+- you can use a folder by specifying env_file: instead (if you dont want to commit keys to repo)
+- network is created automatically by composer for all services in the group, you can specify a network:eg goals-net to have a name
+and it will be an addition to the default network
+- different containers can share the same volume (with same name)
+- you can point docker to a folder to look for Dockerfile eg. with backend
+- the longer form of build you specify: context: ./backend AND dockerfile: Dockerfile
+- even if you let docker auto asign container names, you can still use the names you define in the docker file to reference eg. mongo
+- for interactive mode - stdin_open: true, tty: true
+- you can force images to be rebuilt with docker-compose up --build
+- define your own container names with: container_name:
+```yaml
+version: '3.8'
+services: 
+  mongodb:
+    image: 'mongo'
+    volumes: 
+      - data:/data/db
+    # environment:
+    #   MONGO_INITDB_ROOT_USERNAME:max
+    #   MONGO_INITDB_ROOT_PASSWORD:secret 
+    container_name: mongodb
+    env_file:
+      - ./env/mongo.env
+  backend:
+    build: ./backend
+    # build: 
+      # context: ./backend
+      # dockerfile: Dockerfile
+    ports: 
+      - '80:80'
+    volumes:
+      - logs:/app/logs
+      - ./backend:/app
+      - /app/node_modules
+    env_file:
+      - ./env/backend.env
+    depends_on:
+      - mongodb
+  frontend:
+    build: ./frontend
+    ports:
+    - '3000:3000'
+    volumes:
+      - ./frontend/src:/app/src
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend
+volumes:
+  data:
+  logs:
+
+```
+
+### starting a compose file
+```
+docker-compose up  //starting
+docker-compose down // stopping
+
+docker-compose up -d
+docker-compose up --build
+docker-compose build
+```
