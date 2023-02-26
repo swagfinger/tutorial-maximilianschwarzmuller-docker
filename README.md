@@ -372,3 +372,209 @@ docker build -t favorites-node .
 <!-- run node application again -->
 docker run --name favorites --network favorites-net -d --rm -p 3000:3000 favorites-node
 ```
+
+## 05 multi-container apps
+
+- re-iterate what we have learnt in previous sections
+- DATABASE / BACKEND / FRONTEND
+
+#### GETTING mongodb up and running
+```
+docker run --name mongodb --rm -d -p 27017:27017 mongo
+```
+
+#### GETTING backend up and running
+- create Dockerfile in backend/
+
+```Dockerfile
+<!-- create image -->
+docker build -t goals-node .
+
+
+<!-- run backend container -->
+docker run --name goals-backend --rm goals-node
+```
+
+change backend to:
+```js
+//backend/app.js
+
+mongoose.connect(
+  'mongodb://host.docker.internal:27017/course-goals',
+```
+
+rebuild
+```
+docker build -t goals-node .
+```
+
+re-run
+```
+docker run --name goals-backend --rm goals-node
+```
+
+stop goals-backend
+```
+docker stop goals-backend
+```
+
+stopped so we can expose ports + run in detached mode: -d -p 80:80
+```
+docker run --name goals-backend --rm -d -p 80:80 goals-node
+```
+
+### dockerize frontend
+- create frontend Dockerfile
+```
+<!-- tagged 'goals-react' -->
+docker build -t goals-react .
+
+<!-- run container. name it goals-frontend. detached mode, expose port 3000. run in interactive mode -->
+docker run --name goals-frontend --rm -d -p 3000:3000 -it goals-react
+```
+
+### set up a network rather
+#### step 1
+- root folder (outside projects folders): 
+
+```shell
+docker network create goals-net
+```
+
+### MONGODB
+#### step 2 (BETTER CODE LATER ON) - add mongo to network
+ 
+<!-- put mongodb in network - remember removing the port is okay because the 3 containers are in a network -->
+docker run --name mongodb --rm -d --network goals-net mongo
+#---------------------------------------------------------------------------------
+
+# BACKEND
+# step 3 - update connect to mongodb
+<!-- put backend in network - was connecting using host.docker.internal...needs to update to name of mongo container: mongodb in app.js -->
+mongoose.connect(
+  'mongodb://mongodb:27017/course-goals',
+
+# step 4 - rebuild because of change
+# INSIDE Backend/ folder
+<!-- then rebuild -->
+docker build -t goals-node .
+
+# step 5 (BETTER CODE LATER ON) - create backend image
+docker run --name goals-backend --rm --network goals-net goals-node
+#---------------------------------------------------------------------------------
+
+# WRONG step 6 - frontend - WRONG STEP... DONT DO THIS... 
+# update 'localhost' in frontend/App.js to name of backend: 'goals-backend' then rebuild
+# inside the frontend folder... run..
+# docker build -t goals-react .
+# WRONG step 7 - add frontend to network - but frontend runs in browser, so it doesnt know what http://goals-backend is
+# docker run --name goals-frontend --network goals-net --rm -d -p 3000:3000 -it goals-react
+#---------------------------------------------------------------------------------
+
+# STEP6 - CORRECT WAY - is to leave frontend/App.js trying to access 'localhost'
+# inside Frontend/ folder
+docker build -t goals-react .
+
+# STEP7 (FRONTEND STEP!) - frontend does not need to be part of network (remove: --network goals-net )
+# since it doesnt interactive with backend or DB
+# part being executed is also not in docker environment
+docker run --name goals-frontend --rm -d -p 3000:3000 -it goals-react
+
+# STEP8  (BETTER CODE LATER ON) 
+# restart backend container but publish port 80 so frontend can talk to backend
+docker run --name goals-backend --rm -d -p 80:80 --network goals-net goals-node
+
+# STEP 9 (BETTER CODE LATER ON) DATABASE REVISIT - stopping mongo db looses the data that persisted there
+# save data using volume - define named volume eg. named 'data' - mongo stores data in container here: /data/db
+docker run --name mongodb -v data:/data/db --rm -d --network goals-net mongo
+```
+
+# STEP 10 - SECURITY
+- preventing access to DB using env variables
+- you specify in the shell docker string that it should use username and password, then this ensures that the code in backend can only access the db if the username and password is specified in connection string
+
+- MONGO_INITDB_ROOT_USERNAME 
+- MONGO_INITDB_ROOT_PASSWORD
+
+```shell
+# MONGO STEP! - rebuild node image with username + password 
+
+docker run --name mongodb -v data:/data/db --rm -d --network goals-net -e MONGO_INITDB_ROOT_USERNAME=max -e MONGO_INITDB_ROOT_PASSWORD=secret mongo
+
+``` 
+- this causes the connection to fail because it connected without the username and password which was required and set in docker run (making it protected)...
+- syntax: 'mongodb://[username:password@]host.docker.internal:27017/course-goals',
+- add ?authSouce=admin' to end of connection string
+```
+mongoose.connect(
+  'mongodb://max:secret@mongodb:27017/course-goals?authSource=admin',
+```
+
+- rebuild node image
+```
+docker build -t goals-node .
+```
+
+-run again from Backend/ folder
+
+```shell
+# BACKEND STEP! EXPOSING PORT (WITHOUT VOLUMES)
+docker run --name goals-backend --rm -d -p 80:80 --network goals-net goals-node
+
+```
+## STEP 11 - authentication errors?
+if you are getting error with Authentication failed message when setting username/password
+https://www.udemy.com/course/docker-kubernetes-the-practical-guide/learn/lecture/22167028#questions/13014650
+
+The problem could be the volume and the fact that you created another user with different credentials before you changed them. Because of the volume, your database is still there and hence your old root user is still set up - i.e. your old credentials apply.
+
+### SOLUTION
+docker volume prune
+or 'docker rm' one or more
+
+----------------------------------------------
+
+## Volumes, Bind mounts & Polishing for nodejs Container,
+- to make sure data persists on backend (OPTIONS ARE: named (dont know where its stored) or bind-mount (read from hosting machine))
+- live source code updates
+- to bindmount to everything in /app folder to localhosting directory, you need fill path to app.js (rightclick + copy path)
+- -v /app/node_modules tells docker to keep existing node_modules folder and not overwrite
+
+```shell
+<!-- named method + bindmount everything in /app folder to localhosting directory -->
+
+docker run --name goals-backend -v C:\Users\clark\Downloads\code\tutorial-maximilianschwarzmuller\tutorial-maximilianschwarzmuller-docker\05-multicontainer-app-01-starting-setup\backend:/app -v logs:/app/logs -v /app/node_modules --rm -d -p 80:80 --network goals-net goals-node
+
+```
+
+## swapping out hardcoded username+password
+
+```js
+  `mongodb://${process.env.MONGODB_USERNAME}:${process.env.MONGODB_PASSWORD}@mongodb:27017/course-goals?authSource=admin`,
+```
+
+```Dockerfile
+ENV MONGODB_USERNAME=root
+ENV MONGODB_PASSWORD=secret
+```
+
+<!-- rebuild docker file -->
+docker build -t goals-node .
+```shell
+<!-- note that we are setting env variable to 'max': -e MONGODB_USERNAME=max  -->
+docker run --name goals-backend -v C:\Users\clark\Downloads\code\tutorial-maximilianschwarzmuller\tutorial-maximilianschwarzmuller-docker\05-multicontainer-app-01-starting-setup\backend:/app -v logs:/app/logs -v /app/node_modules -e MONGODB_USERNAME=max --rm -d -p 80:80 --network goals-net goals-node
+```
+------------------------------------------------------------------
+
+## frontend - live source updates
+- copy path from frontend/app.js
+- binding src to docker container src/
+
+```shell
+<!-- rebuild image -->
+docker build -t goals-react .
+```
+
+```shell
+docker run -v C:\Users\clark\Downloads\code\tutorial-maximilianschwarzmuller\tutorial-maximilianschwarzmuller-docker\05-multicontainer-app-01-starting-setup\frontend:/app/src --name goals-frontend --rm -d -p 3000:3000 -it goals-react
+```
