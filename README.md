@@ -448,48 +448,49 @@ docker network create goals-net
 docker run --name mongodb --rm -d --network goals-net mongo
 #---------------------------------------------------------------------------------
 
-# BACKEND
-# step 3 - update connect to mongodb
+### BACKEND
+#### step 3 - update connect to mongodb
 <!-- put backend in network - was connecting using host.docker.internal...needs to update to name of mongo container: mongodb in app.js -->
 mongoose.connect(
   'mongodb://mongodb:27017/course-goals',
 
-# step 4 - rebuild because of change
-# INSIDE Backend/ folder
+### step 4 - rebuild because of change
+#### INSIDE Backend/ folder
 <!-- then rebuild -->
 docker build -t goals-node .
 
-# step 5 (BETTER CODE LATER ON) - create backend image
+### step 5 (BETTER CODE LATER ON) - create backend image
 docker run --name goals-backend --rm --network goals-net goals-node
 #---------------------------------------------------------------------------------
 
-# WRONG step 6 - frontend - WRONG STEP... DONT DO THIS... 
-# update 'localhost' in frontend/App.js to name of backend: 'goals-backend' then rebuild
-# inside the frontend folder... run..
-# docker build -t goals-react .
-# WRONG step 7 - add frontend to network - but frontend runs in browser, so it doesnt know what http://goals-backend is
-# docker run --name goals-frontend --network goals-net --rm -d -p 3000:3000 -it goals-react
+ <!-- WRONG step 6 - frontend - WRONG STEP... DONT DO THIS...  
+ update 'localhost' in frontend/App.js to name of backend: 'goals-backend' then rebuild
+ inside the frontend folder... run..
+ docker build -t goals-react .
+ WRONG step 7 - add frontend to network - but frontend runs in browser, so it doesnt know what http://goals-backend is
+ docker run --name goals-frontend --network goals-net --rm -d -p 3000:3000 -it goals-react -->
 #---------------------------------------------------------------------------------
 
-# STEP6 - CORRECT WAY - is to leave frontend/App.js trying to access 'localhost'
-# inside Frontend/ folder
+### STEP6 - CORRECT WAY - is to leave frontend/App.js trying to access 'localhost'
+#### inside Frontend/ folder
 docker build -t goals-react .
 
-# STEP7 (FRONTEND STEP!) - frontend does not need to be part of network (remove: --network goals-net )
-# since it doesnt interactive with backend or DB
-# part being executed is also not in docker environment
+### STEP7 (FRONTEND STEP!) - frontend does not need to be part of network (remove: --network goals-net )
+#### since it doesnt interactive with backend or DB
+#### part being executed is also not in docker environment
 docker run --name goals-frontend --rm -d -p 3000:3000 -it goals-react
 
-# STEP8  (BETTER CODE LATER ON) 
-# restart backend container but publish port 80 so frontend can talk to backend
+### STEP8  (BETTER CODE LATER ON) 
+#### restart backend container but publish port 80 so frontend can talk to backend
 docker run --name goals-backend --rm -d -p 80:80 --network goals-net goals-node
 
-# STEP 9 (BETTER CODE LATER ON) DATABASE REVISIT - stopping mongo db looses the data that persisted there
-# save data using volume - define named volume eg. named 'data' - mongo stores data in container here: /data/db
+### STEP 9 (BETTER CODE LATER ON) DATABASE REVISIT - stopping mongo db looses the data that persisted there
+#### save data using volume - define named volume eg. named 'data' - mongo stores data in container here: /data/db
 docker run --name mongodb -v data:/data/db --rm -d --network goals-net mongo
-```
 
-# STEP 10 - SECURITY
+
+### STEP 10 - SECURITY
+```
 - preventing access to DB using env variables
 - you specify in the shell docker string that it should use username and password, then this ensures that the code in backend can only access the db if the username and password is specified in connection string
 
@@ -653,3 +654,161 @@ docker-compose up -d
 docker-compose up --build
 docker-compose build
 ```
+---------------------------------------------------------------------
+
+# Utility Containers
+## Assist in running commands in already running containers
+
+- starting in interactive AND detached mode
+- docker exec allows running of commands in already running containers (in addition to start up Docker commands)
+- you need the name of the running container...
+- then you can execute commands in the container (needs -it interactive mode)
+
+## restricting commands that you can run
+with Dockerfile: 
+ENTRYPOINT ['npm']
+
+anything added to command after image name: eg node-util, is appended after ENTRYPOINT
+- docker run -it -v </absolute path for bind mount>:</app=folder inside container> <name of container> init
+-mirrors actions on container back to local folder, allows executing commands on container that mirror back to local
+- docker run - container is not automatically removed after use.. add --rm
+
+```shell
+# start container with node
+docker run -it -d node
+
+# run a command inside container (which has node)
+docker exec -it <name of container> npm init
+
+# eg.
+docker run -it -v /Users/mamillianschwarzmuller/development/teaching/udemy/docker-complete:/app mynpm ...
+```
+
+```yaml
+# docker-compose.yaml
+
+version:"3.8"
+services:
+  npm:
+    build: ./
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./:/app
+```
+- 'docker-compose run' allows us to run a single 'services' from yaml file (by name)
+
+```
+docker-compose run --rm npm init
+```
+
+## using docker to setup a laravel & php project
+- i blanked out when he started talking about php - this chapter is a write off
+
+
+# 09 Deploying Docker Containers
+- web app deployment
+
+### Development
+- containers should encapsulate the runtime environment but not neccesarily the code
+- use bind mounts - to provide your local host project files to the running container
+- allows for instant updates without starting the container
+
+### Production
+- container is/should be standalone - image is single source of truth - should not have source code on host machine
+- COPY - use COPY to copy code to make a snapshot into the image.
+
+### AWS create EC2 instance
+default username is: ec2-user
+get instance details: Public IPv4 DNS
+
+## convert your access key to ppk format 
+- using puttyGen
+- save as .ppk 
+
+## connect to SSH via windows Putty
+https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/putty.html
+- follow steps above..
+
+- username@instance_public_IPV4_dns
+- save session
+
+- connects to EC2 instance
+- so now we need to install docker 
+- and get our image transfered from local to remote machine 
+  1. USING DOCKERHUB - build locally - deploy image on remote - then just exec docker run on remote OR 
+  2. deploy source code and build on remote (WHY!!?? no benefits)
+- run a container 
+- configure security groups
+
+### install docker on virtual machine
+- first update linux
+```
+sudo yum update -y
+```
+
+- install docker
+```
+sudo amazon-linux-extras install docker
+```
+
+<!-- start docker -->
+```
+sudo service docker start
+```
+
+## create image for Dockerhub
+https://hub.docker.com/
+
+1. create a repository on dockerhub (docker hub gives push to repo command: 'docker push swagfinger/node-example-1:tagname')
+2. use command to push to repo: docker push swagfinger/node-example-1:tagname
+3. create .dockerignore
+4. build a local image (view built images: docker images)
+5. renaming built image by re-tag: docker tag node-dep-example-1 swagfinger/node-example-1
+6. login to docker via commandline: docker login
+7. push to dockerhub: docker push swagfinger/node-example-1
+
+```shell
+docker build . -t tagname
+
+# eg. create image
+docker build . -t node-dep-example-1
+
+# view built images
+docker images
+
+#rename built image USING dockerhub given repo
+docker tag node-dep-example-1 swagfinger/node-example-1
+
+# view built images
+docker images
+
+# login to docker via commandline
+docker login
+
+# docker push new tag image to dockerhub
+docker push swagfinger/node-example-1
+```
+
+### running + publishing on EC2
+1. download our published image from dockerhub and start a container
+2. sudo docker ps (view image from remote)
+3. to test: get IPv4 public IP from AWS
+
+```shell
+# publish container
+sudo docker run -d --rm -p 80:80 swagfinger/node-example-1
+
+# check container is on remote
+sudo docker ps
+```
+
+### testing it on remote server (NO NEED FOR INSTALLING NODEJS ON SERVER - only DOCKER)
+- ipv4 public ipaddress from AWS
+- note the security group associated with EC2 (aws)
+- by default public address doesnt allow any access, only SSH
+- need a security group
+- DEFAULT: outbound ALL traffic
+- DEFAULT: inbound ssh 
+- change inbound to allow HTTP 80 : Any
+- retry IPV4 address: YAY this works!
