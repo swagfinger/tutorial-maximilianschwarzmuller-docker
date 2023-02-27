@@ -804,6 +804,7 @@ sudo docker ps
 ```
 
 ### testing it on remote server (NO NEED FOR INSTALLING NODEJS ON SERVER - only DOCKER)
+#### full control (self-managed method):
 - ipv4 public ipaddress from AWS
 - note the security group associated with EC2 (aws)
 - by default public address doesnt allow any access, only SSH
@@ -812,3 +813,159 @@ sudo docker ps
 - DEFAULT: inbound ssh 
 - change inbound to allow HTTP 80 : Any
 - retry IPV4 address: YAY this works!
+
+
+## pushing updates to remote
+- rebuild image - docker build -t node-dep-example-1 .
+- push update to docker-hub - docker push swagfinger/node-example-1
+
+```shell
+# build
+docker build -t node-dep-example-1 .
+docker build --no-cache -t node-dep-example-1 .
+# push
+docker push swagfinger/node-example-1
+
+```
+
+- back on ec2instance cmd: stop the running container
+```shell
+sudo docker stop stoic_yalow
+```
+
+### docker pull updates
+- DONT FORGET 'SUDO'
+- rerun command on server
+- first docker pull (to fetch new updates)
+
+```shell
+# from ec2 cmd
+sudo docker pull swagfinger/node-example-1
+sudo docker run -d --rm -p 80:80 swagfinger/node-example-1
+```
+#### managed AWS-ECS
+- assists in managing containers
+- deploying containers is not via docker anymore, its via ECS tools
+  - container definition (CONTAINER CONFIG)
+  - task definition (SERVER CONFIG eg. Fargate (on demand EC2) serverless launch mode) - gives public ip
+  - service (eg ALB)
+  - cluster (network, vpc)
+- ECS costs money (e.g. load balancers, NAT gateways etc.)
+ 
+#### updating ECS containers
+- clusters -> default -> tasks -> task definition of running task -> create new revision -> create
+- on confirmation page -> actions -> update service
+
+## 142. Multi container app by adding Frontend
+- wont use docker compose for deployment on remote (cloud)
+- ecs cant use container name references as per Dockerfile
+- HOWEVER, if they fall under same 'task', you can use 'localhost' on ECS instead of docker network name as they will be on same machine
+- make use of env variables to allow different values for development vs production
+- create repository on dockerhub (public)
+- retag image and push again to dockerhub
+- using environment variables under ECS settings instead of reading from .env file or Dockerfile
+- create ELB - internet facing / port 80 / connect to VPC
+
+## 145. load balancer 
+- use load balancer dns name - we can use this url as stable domain
+- the domain points at the deployed containers
+
+## 146. EFS volumes with ECS
+- rebuilding image and pushing image to docker-hub causes database is lost when task is shutdown
+- ECS TALKING TO EFS: solution is to use a volume -add a volume *EFS (elastic file system) - create file system -> use same vpc -> network access ->  then ec2 security group ->create new security group, add it to vpc -> add inbound rule (NFS) and inbound source choose same security group used to manage containers (port 2049 used by EFS)-> create
+- back at EFS select the newly created EFS Volume -> add
+-  go to mongodb  - connect to container -> storage and mount points -> volume: data -> container path: /data/db (path mongodb writes to) -> update
+- force redeployment (1.4+ supports EFS volumes)
+
+## 149. moving away from mongodb to MongoDB atlas
+- mongodb in the cloud
+- create an account
+- create a cluster (shared) and you can have multiple db's in a cluster
+- connect an application
+- get url connection string
+- username+password can be substituted via env
+- best to use mongodb atlas for both dev and prod
+- or have a container with mongodb database during dev and atlas for production
+- but versions may be different. same environment for both is best.
+- removes need for port.
+- set db for dev and another for prod
+
+DOCKER COMPOSE
+- remove mongodb service
+- remove volume
+- remove env_file
+- remove depends_on
+
+backend.env 
+- no longer use mongodb container name, use url in connection string
+- update MONGODB_USERNAME + MONGODB_PASSWORD with details from mongodb Atlas
+
+mongodb Atlas
+- network access - need to whitelist IP or from anywhere: 0.0.0.0/0
+- db access: make user+password give read/write access
+
+## MONGODB for production
+- ECS remove mongodb container - run node backend container which sets mongodb connection string/credentials/db name in cloud
+- remove volume / efs file system
+- remove EC2 security group for volume
+- update environment variables for ECS: MONGODB_URL, MONGODB_NAME, MONGODB_USERNAME, MONGODB_PASSWORD
+- rebuild image and push to dockerhub
+- login to docker, docker push <docker image>
+
+## FRONTEND 
+
+- development code is different from production
+- frontend runs in browser / production transforms code (without running a server)
+- prod doesnt expose port , only uses node for build
+- prod: ["npm", "run", "build"]
+- Multi-Stage docker builds
+  - one docker file, multiple build /setup steps / stages can build from each other
+  - use --target <FROM name> to target stage of Dockerfile
+- switch to webserver nginx - serving from default folder: /user/share/nginx/html
+- copy files from first stage to second stage
+- DOCKER should start webserver
+
+```Dockerfile
+# Dockerfile.prod
+FROM node:14-alpine as build
+WORKDIR /app
+COPY package.json .
+RUN npm install
+COPY . .
+RUN npm run build
+
+# further stages (multistage build)
+# switching base image...
+
+FROM nginx:stable-alpine
+COPY --from=build /app/build /user/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+## 155. deploying multistage build file
+- frontend App.js request urls become relative ie. remove http://localhost
+-dockerhub - create a new frontend repository
+- create production image locally:
+- push image to dockerhub
+
+```shell
+docker build -f frontend/Dockerfile.prod -t <dockerhub repo name> ./frontend
+```
+
+- AWS ECS - point to frontend production image on dockerhub
+- startup dependency ordering - specify which other containers should start up first (optional)
+- only frontend or backend can map to port 80, cant have 2 containers on same ECS host - ie need to spin up aditional TASK
+  - add the frontend container to the task, point to dockerhub image of frontend, map port 80 (new task/ new url)
+  - new url means need to adjust frontend App.js relative paths to add URL
+  - inject env variables (not Docker env variables) ie. use process.env.NODE_ENV === 'development'
+- add load balancer - get its url
+
+```js
+const backendUrl = process.env.NODE_ENV === "development" ? "http://localhost" : <loadbalancer url from EC2>
+
+// add backendUrl to relative path urls in code.
+```
+- rebuild frontend image 
+- push again to Dockerhub
+- ECS - create service based on Task
