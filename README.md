@@ -969,3 +969,7 @@ const backendUrl = process.env.NODE_ENV === "development" ? "http://localhost" :
 - rebuild frontend image 
 - push again to Dockerhub
 - ECS - create service based on Task
+
+
+# 12 Kubernetes
+[https://github.com/swagfinger/tutorial-maximilianschwarzmuller-docker/blob/main/README-KUBERNETES.md](https://github.com/swagfinger/tutorial-maximilianschwarzmuller-docker/blob/main/README-KUBERNETES.md)
