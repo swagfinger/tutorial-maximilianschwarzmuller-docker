@@ -20,12 +20,12 @@
 
 # Kubernetes architecture
 
--> services (group of pods with unique independent IP addresses - allows exposing services to outside world with certain IP)
--> containers 
--> pods (container(s) + reqiored resources eg. volumes) 
--> worker node(s) (a machine cpu/memory) + proxy/config (configure traffic) 
--> master node (control plane / interacts with worker nodes) 
--> cluster 
+-> services (group of pods with unique independent IP addresses - allows exposing services to outside world with certain IP)   
+-> containers   
+-> pods (container(s) + reqiored resources eg. volumes)   
+-> worker node(s) (a machine cpu/memory) + proxy/config (configure traffic)   
+-> master node (control plane / interacts with worker nodes)   
+-> cluster   
 
 - the master node sends instructions to cloud provider api to tell it to create resources to replicate desired big picture (end state)
 
