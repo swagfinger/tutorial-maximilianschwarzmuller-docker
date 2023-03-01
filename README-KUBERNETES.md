@@ -269,7 +269,7 @@ kubectl set image deployment/first-app kub-first-app=swagfinger/kub-first-app:2
 # check status of deployment
 kubectl rollout status deployment/first-app
 
-minikube dashboard
+`minikube dashboard`
 
 # view deployment (with admin rights)
 minikube service first-app
@@ -323,6 +323,11 @@ kubectl delete deployment first-app
 - Resource definition files declarative approach to kubernetes commands via yaml
 - so instead of running kubectl commands - we point to a yaml file (kubectl apply -f config.yaml)
 
+#### first cleanup deployments (start clean)
+- kubectl get deployment
+- kubectl delete deployment second-app-deployment 
+- kubectl get services
+- 'kubernetes' cluster should be running
 
 ```yaml
 # deployment.yaml
@@ -332,10 +337,10 @@ metadata:
   name: second-app-deployment
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      app: second-app
-      tier: backend
+  # selector:
+  #   matchLabels:
+  #     app: second-app
+  #     tier: backend
   template:
     metadata: 
       labels:
@@ -351,7 +356,13 @@ spec:
 ```
 
 ### deployment of yaml file
-ERROR: missing required filed "selector"
+- ERROR: missing required field "selector"
+- the selector key has a matchLabels key - key/value pair of pod labels we want to match with this deployment
+  - template defines which pods are created by this deployment, but deployments are dynamic - new pods are automatically managed by deployment
+  - deployments are continuously watching all pods and for new pods to control, and it selects pods from "selector" fieled
+  - In Windows 11, if I start writing kubectl apply -f depl and press TAB key PowerShell finds the yaml file. So the command turns into this: `kubectl apply -f .\deployment.yaml`
+
+
 
 ```yaml
   selector:
@@ -360,6 +371,106 @@ ERROR: missing required filed "selector"
       tier: backend
 ```
 
-```shell
-kubectl apply -f=deployment.yml
+### Running a deployment via YAML
+```powershell
+kubectl apply -f .\deployment.yaml
+kubectl get deployments
+kubectl get pods
 ```
+
+### defining a service YAML for deployment
+- kind: Service
+- name: is up to you
+- selector - define which other pods of the app should be part of this service label key/value pair
+- ports: you can list multiple ports to expose
+- create service: `kubectl apply -f .\service.yaml`
+- 
+<!-- service.yaml -->
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector: 
+    app: second-app
+  ports:
+    - protocol: 'TCP'
+      port: 80
+      targetPort: 8080
+    # - protocol: 'TCP'
+    #   port: 443
+    #   targetPort: 443
+  type: LoadBalancer
+```
+
+```powershell
+# get services
+kubectl get services
+
+# start VM - cluster 
+minikube start --driver=hyperv
+
+#cluster register service
+kubectl apply -f .\service.yaml
+
+# expose service (powershell AS ADMINISTRATOR)
+`minikube service backend`
+```
+
+## updating image OR yaml
+- make the change and reply rerun apply
+
+```powershell
+kubectl apply -f .\deployment.yaml
+```
+
+## deleting declaratively
+- can also point at yaml file
+- or just use imperative delete method
+
+```powershell
+kubectl delete -f=.\deployment.yaml
+```
+----------------------------------------------------------------
+
+## multiple vs single config YAML files
+
+- use --- to separate configs in a single file
+----------------------------------------------------------------
+
+## 202. labels + selectors
+- also has matchExpressions: 
+- list of expressions which all have to be satisfied to have a matching object
+```yaml
+selector:
+  matchExpressions:
+    - {key: app, operator:In, values:[second-app, first-app]}
+```
+
+- can delete by label (if you have label in deployment AND in service)
+
+```shell
+kubectl delete deployments, services -l group=example
+
+```
+
+## 203 liveness Probes
+- by adding 'livenessProbe' key, you can check on health of app
+
+```yaml
+spec
+  containers
+    - name
+    livenessProbe:
+      httpGet:
+        path:/
+        port:8080
+      periodSeconds: 10
+      initialDelaySeconds: 5
+```
+
+### CONFIGURATION options - eg. imagePullPolicy
+- tagging image with 'latest' will always pull latest
+- OR without tagging - specify imagePullPolicy: Always

@@ -16,6 +16,6 @@ spec:
     spec: 
       containers:
         - name: second-node
-          image: academind/kub-first-app:2
+          image: swagfinger/kub-first-app:2
         # - name: ...
         #   image: ...
