@@ -474,3 +474,298 @@ spec
 ### CONFIGURATION options - eg. imagePullPolicy
 - tagging image with 'latest' will always pull latest
 - OR without tagging - specify imagePullPolicy: Always
+
+------------------------------------------------------------------------------------------------------
+
+# Kubernetes Volumes
+
+### volumes Recap
+- persistence volumes
+- read/write text file to story folder
+- there is a docker compose file
+
+<!-- run docker -->
+```
+docker-compose up -d --build
+```
+
+- once up and running, use postman to test
+  GET localhost/story
+  POST localhost/story body-> raw -> JSON
+
+```
+<!-- POST -->
+{
+  "text": "my text!"
+}
+```
+
+- stopping container, re-running UP command, notice data is persisted
+```
+docker compose down
+```
+
+### Data surviving container restarts - Volumes
+- persist data with volumes
+- Kubernetes configured to add volumes to containers
+- Kubernetes can mount volumes into containers
+  - different types of volumes: local volumes (nodes) + cloud provider specific volumes
+  - default: volume lifetime depends on pod lifetime
+
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: story-deployment
+spec: 
+  replicas: 1
+  selector:
+    matchLabels:
+      app: story
+  template:
+    metadata:
+      labels:
+        app: story
+    spec:
+      containers:
+        - name: story
+          image: academind/kub-data-demo
+```
+
+```yaml
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: story-service
+spec:
+  selector: 
+    app: story
+  type: LoadBalancer
+  ports:
+    - protocol: "TCP"
+      port: 80
+      targetPort: 3000
+```
+
+- create dockerhub repository: 'swagfinger/kub-data-demo'
+- `docker push swagfinger/kub-data-demo`
+
+```build
+docker build -t swagfinger/kub-data-demo .
+docker push swagfinger/kub-data-demo
+```
+
+### apply service + deployment
+-make sure service has spec: type: LoadBalancer
+```
+
+minikube status
+
+minikube start --driver=hyperv
+
+kubectl apply -f .\deployment.yaml
+kubectl apply -f .\service.yaml
+
+minikube service story-service
+```
+### Volume type - emptyDir: {}
+- creates an empty directory per pod.
+- bind volume to container via volumeMounts
+- mountPath: is container internal path where volume should be mounted
+- the container mountPath is defined in the dockerfile + app (where app writes data)
+- this is same as what you would define in docker-compose
+- name: you point at volume name, you want to use for container internal path so volume is mounted into container at mountPath
+
+
+```yaml
+# add to deployment.yaml
+  containers:
+    - name: story
+      image: swagfinger/kub-data-demo:1
+      # bind volume to container
+      volumeMounts:
+        - mountPath: /app/story
+          name: story-volume
+  volumes:
+    - name: story-volume
+      emptyDir: {}
+```
+
+- apply the change 
+```powershell
+kubectl apply -f .\deployment.yaml
+
+kubectl get pods
+```
+- now with volumes the container should survive restarts
+
+
+### Volume type - hostPath
+- set a path on host machine (node) running this pod, and then data from that path will be exposed to different pods
+- So multiple pods can now share one in the same path on the host machine instead of pod-specific paths,
+  - 'hostpath' receives 2 keys: path on host machine eg. /data 
+  - and 'type' - how path should be handled - DirectoryOrCreate (create folder if doesnt exist)
+- if you have multiple nodes - the hostPath would still be node specific - ie .. multiple pods, multiple replicas, different nodes would not have access to same data.
+
+```yaml
+# deployment.yaml
+
+  volumes:
+    - name: story-volume
+      hostpath:
+        path: /data
+        type: DirectoryOrCreate
+```
+
+### 215. Volume type - CSI volume type
+container storage interface - flexible type - expose an interface to attach any storage solution
+
+-----------------------------------------------------------------------------------------------------
+
+### Persistent Volumes
+- pod and node independent volumes is sometimes needed eg db - data persists
+- volume is detached from the pod (Independent)
+- you can add 'persistent volume claims (PV Claim)' which are part of pods to reach out to Persistent Volumes (volume not part of node/pod) to request access
+
+https://www.computerweekly.com/feature/Storage-pros-and-cons-Block-vs-file-vs-object-storage
+
+- volumeMode: Filesystem / Block
+
+- accessMode: 
+  - ReadWriteOnce
+  - ReadOnlyMany
+  - ReadWriteMany
+
+
+```yaml
+# host-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata: 
+  name: host-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  storageClassName: standard
+  accessMode: 
+    - ReadWriteOnce
+  hostPath: 
+    path: /data
+    type: DirectoryOrCreate
+```
+
+persistent volume claim - the claim can be used by pods to request access to persistent volume
+
+```yaml
+# host-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: 
+  name: host-pvc
+spec:
+  volumeName: host-pv
+  accessModes: 
+    - ReadWriteOnce
+  storageClassName: standard
+  resources: 
+    requests:
+      storage: 1Gi
+
+```
+
+<!-- deployment.yaml -->
+<!-- connect pod to claim -->
+```yaml
+  volumes:
+    - name: story-volume
+      # hostpath:
+      #   path: /data
+      #   type: DirectoryOrCreate
+      persistentVolumeClaim:
+        claimName: host-pvc
+```
+
+
+```yaml
+kubectl apply -f .\host-pv.yaml
+kubectl apply -f .\host-pvc.yaml
+kubectl apply -f .\deployment.yaml
+
+# get volumes
+kubectl get pv
+
+# get claims
+kubectl get pvc
+
+# get deployment
+kubectl get deployments
+```
+----------------------------------------------------------------------------
+
+## 221. Environment variables
+- choose between one of the options:
+
+#### in yaml config example:
+
+- process.env.STORY_FOLDER
+- in the yaml
+
+```yaml
+spec:
+  containers:
+    - name: story
+      image:
+      env: 
+        # environment variables: key/values pairs here
+        - name: STORY_FOLDER
+          value: 'story'
+```
+
+#### env in separate config file
+applying the config yaml:
+
+```yaml
+kubectl apply -f .\environment.yaml
+kubectl get configmap
+```
+
+```yaml
+# environment.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-store-env
+data:
+  # key/value map
+  folder: 'story' 
+```
+
+- to use this config map, to set env variables for this container...
+- use valueFrom and nested a configMapKeyRef which points to a config map. and in that map a key
+  - name points the the config metadata:name
+  - key: set it to data: value from config map yaml
+
+```yaml
+# deployment.yaml
+spec:
+  containers:
+    - name: story
+      image:
+      env: 
+        # environment variables: key/values pairs here
+        - name: STORY_FOLDER
+          valueFrom: 
+            configMapKeyRef:
+              name: data-store-env
+              key: folder
+```
+
+```shell
+kubectl apply -f .\deployment.yaml
+```
+
+----------------------------------------------------------------------------
