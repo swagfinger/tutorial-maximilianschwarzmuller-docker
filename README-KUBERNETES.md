@@ -705,6 +705,7 @@ kubectl get pvc
 kubectl get deployments
 ```
 ----------------------------------------------------------------------------
+----------------------------------------------------------------------------
 
 ## 221. Environment variables
 - choose between one of the options:
@@ -767,5 +768,414 @@ spec:
 ```shell
 kubectl apply -f .\deployment.yaml
 ```
-
 ----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+
+## 14. Kubernetes Networking
+- pod to pod communication
+- connecting containers with the world
+
+3 containers working together - in a cluster
+POD -
+  1. auth-api - generating tokens / verifying tokens
+  2. users-api - reach out to auth api service to get token
+POD - 
+  3. tasks-api - get tasks
+
+
+```powershell
+# cleanup
+kubectl get deployments
+kubectl delete deployments story-deployment
+```
+
+- users api handles incomping requsts and forwrards to Auth Api
+- auth api / user api is internal pod-to-pod communication
+
+
+```powershell 
+# with admin rights
+
+# ensure minikube is up and running
+minikube start --driver=hyperv
+
+minikube status
+
+# ensure no deployments running
+kubectl get deployments
+kubectl get services
+
+kubectl delete services story-service
+kubectl delete services backend
+# only kubernets default services should be running
+
+```
+
+#### moving containers to kubernetes
+##### users-api
+
+- dockerhub create repo: swagfinger/kub-demo-users
+
+
+- from users-api folder: 
+- tweak users-app.js by adjusting axios changing calls to dummy text.
+
+```powershell
+# build 
+docker build -t swagfinger/kub-demo-users .
+
+# push to dockerhub 
+docker push swagfinger/kub-demo-users
+```
+- we setup a kubernetes/ folder for all deployment configurations: 
+  - create users-deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: useres-deployment
+spec: 
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          # image we just pushed to dockerhub
+          image: swagfinger/kub-demo-users
+          
+```
+- in kubernetes folder:
+```powershell
+# same powershell window
+kubectl apply -f ./users-deployment.yaml
+```
+
+#### get service working
+1. - outside world access
+2. - ip address that is stable
+- create kubernetes/users-service.yaml
+
+- select pod by label: selector: app: users (references: create users-deployment.yaml)
+- type default is ClusterIP - internal communcation (within cluster - load balancer BUT No outside world IP)
+- type NodePort - using node IP (reachable from outside but eg. different IP's arrise from pods moving between nodes)
+- remember service with type: 'LoadBalancer' allows outside access and stable IP (load balancing)
+- port is outside facing port - port to open up (where you can send requests) 
+- targetPort inside of pod/container where request will be forwarded
+  - get target port from users-service.yaml
+- apply this yaml config:
+
+```powershell
+# from kubernetes folder:
+# same powershell window
+kubectl apply -f ./users-service.yaml
+```
+
+```yaml
+# user-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: users-service
+spec:
+  selector:
+    app: users
+  type: LoadBalancer
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+```
+
+- then from kubernetes folder:
+
+```powershell
+
+# administrative rights - run from kubernetes folder
+# same powershell window
+minikube service users-service
+
+```
+- this gives a url: http://172.31.143.106:30210 which you can use for postman
+
+POSTMAN:
+
+POST: http://172.31.143.106:30210/login
+
+body-raw-json:
+``` 
+{
+  "email": "test@test.com",
+  "password":"testers"
+}
+```
+
+### getting user-api to work with auth-api
+
+#### first fix the code...by creating environment variables
+- in user-api, the axios request url pointed directly to 'auth' which was allowed because using docker-compose
+  - and docker-compose creates a internal network with allowed services: names in the docker-compose file to be referenced directly.
+- but this wont work with kubernetes - change references to service names in code to use env variables
+
+```js
+// users-api/users-app.js
+  const hashedPW = await axios.get(`http://${process.env.AUTH_ADDRESS}/hashed-password/` + password);
+
+   const response = await axios.get(
+    `http://${process.env.AUTH_ADDRESS}/token/` + hashedPassword + '/' + password
+  );
+```
+
+- fix docker-compose to switch to env variables: 
+
+```yaml
+environment:
+  AUTH_ADDRESS:auth
+
+```
+
+#### ensure auth-api image exists on dockerhub
+create a repo on dockerhub: kub-demo-auth
+
+from auth-api folder: 
+C:\...\14-kubernetes-networking\kub-network-02-dummy-user-service\auth-api
+
+```powershell
+# build
+docker build -t swagfinger/kub-demo-auth .
+
+# push
+docker push swagfinger/kub-demo-auth
+```
+
+- once image is created we can use it to create containers inside kubernetes pods
+- we can deploy - but a new deployment will create a new pod
+- we want to have users API and Auth API in same pod
+- so we update kubernetes/users-deployment.yaml by adding a container
+
+```yaml
+# kubernetes/users-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: users-deployment
+spec: 
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+        - name: users
+          image: swagfinger/kub-demo-users:latest
+        - name: auth
+          image: swagfinger/kub-demo-auth:latest
+```
+
+- still to-do
+1. after making changes to users-api/users-app (using env) - we need to push users-api image to apply it
+
+```powershell
+# from users-api/ folder
+docker build -t swagfinger/kub-demo-users .
+
+# push
+docker push swagfinger/kub-demo-users
+```
+
+2. kubernetes needs a values for process.env.AUTH_ADDRESS
+- LOCALHOST - when 2 containers run in same pod, kubernetes allows you to use localhost to send requests
+- add env AUTH_ADDRESS with 'localhost' as value
+
+```yaml
+#kubernetes/useres-deployment.yaml
+spec:
+      containers:
+        - name: users
+          image: academind/kub-demo-users:latest
+          env:
+            - name: AUTH_ADDRESS
+              value: localhost
+        - name: auth
+          image: academind/kub-demo-auth:latest
+```
+
+from kubernetes folder:
+```powershell
+kubectl apply -f ./users-deployment.yaml
+kubectl apply -f ./users-serice.yaml
+kubectl get pods
+
+```
+
+
+```powershell
+
+# administrative rights - run from kubernetes folder
+# same powershell window
+minikube service users-service
+
+# exposes url: http://172.31.143.106:31537
+
+#### test #1
+# postman
+http://172.31.128.254:31992/signup
+
+body-raw-json:
+```json
+{
+  "email": "test@test.com",
+  "password":"testers"
+}
+```
+
+- result
+```
+{
+  "message": "User created!"
+}
+```
+
+```powershell
+#### test #2
+
+# postman
+http://172.31.128.254:31992/login
+
+body-raw-json:
+```json
+{
+  "email": "test@test.com",
+  "password":"testers"
+}
+```
+- result
+```
+{
+    "token": "abc"
+}
+```
+
+------------------------------------------------------------------
+------------------------------------------------------------------
+
+## 231. Creating multiple deployments
+- authAPI should not be public facing (reachable by taskAPI and userAPI)
+- taskAPI should be able to communicate with authAPI (but in a separate pod)
+- usersAPI getes its own pod
+
+becomes 3 pods - 3 deployments 
+
+### pod-to-pod communication in a cluster using multiple services
+- create kubernetes/auth-deployment.yaml - has a auth container
+- remove auth container from users-deployment.yaml
+
+- auth-deployment now wont be reachable through a service - reachable only inside cluster
+- to give it a stable IP, we also create an auth-service.yaml
+- type becomes ClusterIP so its not exposed to outside - has load balancing
+- note port is 80
+
+```yaml
+# auth-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+## 232. Pod-to-pod communication with IP Addresses & env variables
+#### so how do we reach auth-service?
+- what should we use for AUTH_ADDRESS: 
+- to find out IP addresses for services, we can apply the service and see...
+- from kubectl get services: we use the CLUSTER-IP
+
+```powershell
+# from Kubernetes/ folder
+kubectl apply -f ./auth-service.yaml
+kubectl apply -f ./auth-deployment.yaml
+kubectl get services: CLUSTER-IP
+```
+
+so users-deployment.yaml wants to access auth-service, it must reference that CLUSTER-IP
+eg. 'running kubectl get services' 
+auth-service    ClusterIP      10.106.182.69   <none>        80/TCP           31m
+kubernetes      ClusterIP      10.96.0.1       <none>        443/TCP          2d5h
+users-service   LoadBalancer   10.96.46.246    <pending>     8080:31992/TCP   3h7m
+
+```yaml
+# users-deployment.yaml
+    spec:
+      containers:
+        - name: users
+          image: swagfinger/kub-demo-users:latest
+          env:
+            - name: AUTH_ADDRESS
+              value: 10.106.182.69
+```
+
+- then we appy the changes to users-deployment.yaml
+```powershell
+# from kubernetes folder
+kubectl apply -f ./users-deployment.yaml
+kubectl get pods
+```
+## autogenerated ip's given by kubernetes using environment variables
+- Kubernetes gives autogenerated environment variables through services running in cluster
+- process.env.<name> where name is autogenerated by kubernetes
+- <name> is service metadata name: kubernetes/.yaml/ 
+
+```yaml
+  metadata:
+    name: auth-service
+```
+- kubernetes transforms <name> to env: <AUTH_SERVICE>_SERVICE_HOST 
+  eg. process.env.AUTH_SERVICE_SERVICE_HOST gives us IP address assigned to service
+- this also means docker-compose will have to change proccess.env.AUTH_ADDRESS to same variable name: AUTH_SERVICE_SERVICE_HOST
+
+
+```yaml
+# docker-compose.yaml
+  users:
+    build: ./users-api
+    environment:
+      AUTH_ADDRESS: auth
+      AUTH_SERVICE_SERVICE_HOST: auth
+```
+
+- redeploy updated users image
+
+```powershell
+# from users-api folder
+docker build -t swagfinger/kub-demo-users .
+
+# push 
+docker push swagfinger/kub-demo-users
+```
+
+- then from kubernetes folder
+```powershell
+# from kubernetes folder
+kubectl get deployments
+kubectl delete -f ./users-deployment.yaml
+kubectl apply -f ./users-deployment.yaml
+
+kubectl get deployments
+```
+---------------------------------------------------------------------------------------
