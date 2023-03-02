@@ -1179,3 +1179,159 @@ kubectl apply -f ./users-deployment.yaml
 kubectl get deployments
 ```
 ---------------------------------------------------------------------------------------
+
+#### WOW SHEIZA MAX!!! another way to use dynamic addresses..
+#### method 3: DNS for Pod-to-Pod communication
+- COREDNS - a more convenient way to get domain names - cluster internal domain names
+- COREDNS auto creates domain names inside cluster for all services
+- you can just use your service name eg. 'auth-service' . (a DOT) then the namespace service is part of then "default"
+- namespace inside cluster (grouping of resources)- 
+- 'kubectl get namespaces'
+- 'default' namespace is what deployments and services are asigned if we dont tell it to do it another way
+- address to use inside of code running in your cluster to send requests to other serices of that cluster.
+- eg. 'auth-service.default'
+
+```yaml
+# kubernetes/auth-serevices.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+spec:
+  selector:
+    app: auth
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+```
+```yaml
+# users-deployment.yaml
+    spec:
+      containers:
+        - name: users
+          image: swagfinger/kub-demo-users:latest
+          env:
+            - name: AUTH_ADDRESS
+              # value: 10.106.182.69
+              value: 'auth-service.default'
+```
+
+```powershell
+kubectl get namespaces
+```
+
+```powershell
+# from kubernetes folder
+kubectl get deployments
+kubectl delete -f ./users-deployment.yaml
+kubectl apply -f ./users-deployment.yaml
+```
+
+- test with postman (signup)
+
+--------------------------------------------------------------------------------------------
+
+## 235. tasks-api
+
+- NBB!!!!!!!!!!! check package.json "name" matches the folder
+
+- axios request should adjust to use environment variable so it can work with     
+  - docker-compose - will use service name 
+
+  ```js
+  // tasks-app.js
+    const response = await axios.get(`http://${process.env.AUTH_ADDRESS}/verify-token/` + token);
+  ```
+
+  ```yaml
+  # docker-compose
+    AUTH_ADDRESS: auth
+  ```
+  - kubernetes - service domain name
+
+- change image to point to your own Dockerhub link (auth-api, tasks-api, users-api)
+re-build
+re-push
+
+create new files in folder: kubernetes/
+- tasks-deployment.yaml
+- tasks-service.yaml  - type: LoadBalancer, port to map: llook at Dockerfile
+
+- create tasks-api/tasks folder
+
+- create dockerhub repository kub-demo-tasks:
+
+from tasks-api folder:
+```powershell
+# build
+docker build -t swagfinger/kub-demo-tasks .
+#push
+docker push swagfinger/kub-demo-tasks
+```
+
+from kubernetes folder:
+```powershell
+# apply
+kubectl apply -f ./tasks-service.yaml 
+kubectl apply -f ./tasks-deployment.yaml
+
+kubectl apply -f ./auth-service.yaml
+kubectl apply -f ./auth-deployment.yaml
+
+kubectl apply -f ./users-service.yaml
+kubectl apply -f ./users-deployment.yaml
+
+
+kubectl get deployments
+kubectl get pods
+
+minikube service tasks-service 
+
+```
+- minikube command gives us new url to test with eg. postman
+
+```powershell
+|-----------|---------------|-------------|-----------------------------|
+| NAMESPACE |     NAME      | TARGET PORT |             URL             |
+|-----------|---------------|-------------|-----------------------------|
+| default   | tasks-service |        8000 | http://172.31.128.254:31790 |
+|-----------|---------------|-------------|-----------------------------|
+```
+
+#### postman
+ POST http://172.31.128.254:31790/tasks
+- POST
+- headers: key: Authorization -> value: Bearer abc
+- BODY -> RAW -> JSON : {"text": "a first task", "title": "do this"}
+
+```postman
+POST
+{
+    "message": "Task stored.",
+    "createdTask": {
+        "title": "do this",
+        "text": "a first task"
+    }
+}
+```
+----------------------------------------------------------
+- GET http://172.31.128.254:31790/tasks
+- headers: key: Authorization -> value: Bearer abc
+
+```postman
+GET 
+{
+    "message": "Tasks loaded.",
+    "tasks": [
+        {
+            "title": "do this",
+            "text": "a first task"
+        }
+    ]
+}
+```
+
+------------------------------------------------------------------
+# 236 Kubernetes - adding a containerized frontend

@@ -23,7 +23,7 @@ when you run - it must be from your kubernetes folder
 
 ```powershell
 kubectl apply -f ./users-deployment.yaml
-kubectl apply -f ./users-serice.yaml
+kubectl apply -f ./users-service.yaml
 ```
 
 minikube service users-service
