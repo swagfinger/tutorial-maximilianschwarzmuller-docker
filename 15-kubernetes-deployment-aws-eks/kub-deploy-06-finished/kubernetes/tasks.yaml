@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: users-service
+  name: tasks-service
 spec:
   selector:
-    app: users
+    app: task
   type: LoadBalancer
   ports:
     - protocol: TCP
@@ -14,20 +14,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: users-deployment
+  name: tasks-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: users
+      app: task
   template:
     metadata:
       labels:
-        app: users
+        app: task
     spec:
       containers:
-        - name: users-api
-          image: swagfinger/kub-dep-users:latest
+        - name: tasks-api
+          image: swagfinger/kub-dep-tasks
           env:
             - name: MONGODB_CONNECTION_URI
               value: 'mongodb+srv://clarkcookie:1v1u2Tp2c7jNPOzo@cluster0.wlkvg7z.mongodb.net/?retryWrites=true&w=majority'
