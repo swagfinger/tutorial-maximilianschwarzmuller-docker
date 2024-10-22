@@ -2,10 +2,14 @@
 
 ## docker installation
 
-install docker desktop
-hyperV - Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
-container - Enable-WindowsOptionalFeature -Online -FeatureName containers –All
-powershell as administrator: wsl.exe --update
+### install docker desktop
+
+#### below install is if you have windows enterprise or home
+```
+hyperV - `Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All`
+container - `Enable-WindowsOptionalFeature -Online -FeatureName containers –All`
+powershell as administrator: `wsl.exe --update`
+```
 
 # 02 Docker Images & Containers: Fundamentals
 
