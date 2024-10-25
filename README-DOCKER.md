@@ -73,7 +73,7 @@ CMD ["node", "server.js"]
 
 ## image layers
 
-- each command in docker file is like a layer of code execution and dependin on how granular the code it you can streamline the build process but helping docker only runing a layer of code when a change occurs. eg.
+- each command in docker file is like a layer of code execution and depending on how granular the code is, you can streamline the build process by helping docker only running a layer of code when a change occurs. eg.
 
 - by separating `COPY package.json /app` and `COPY . /app`, any code changes only re-execute this line (`COPY . /app`) onwards
 - by using caching, it optimises the build
