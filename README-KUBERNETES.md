@@ -22,7 +22,7 @@
 
 -> services (group of pods with unique independent IP addresses - allows exposing services to outside world with certain IP)   
 -> containers   
--> pods (container(s) + reqiored resources eg. volumes)   
+-> pods (container(s) + required resources eg. volumes)   
 -> worker node(s) (a machine cpu/memory) + proxy/config (configure traffic)   
 -> master node (control plane / interacts with worker nodes)   
 -> cluster   
