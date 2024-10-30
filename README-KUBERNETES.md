@@ -53,7 +53,7 @@
 - Cloud-Controller-Manager (like Kube-controller-manager) but for a specific cloud provider - knows how to interact + work with cloud provider services
 
 
-## Kubernetes does not manage inrastructure
+## Kubernetes does not manage infrastructure
 - responsible for managing deployed application
 - DOES NOT manage infrastructure
 
